@@ -7,6 +7,7 @@ $nav = [
     'usage-guide'       => ['คู่มือใช้บัญชี', '🧭'],
     'case-studies'      => ['เคสตัวอย่าง', '📁'],
     'calculator'        => ['คำนวณดีล', '🧮'],
+    'profit-loss'       => ['กำไร-ขาดทุน', '📈'],
 ];
 $e = static fn ($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 ?><!DOCTYPE html>

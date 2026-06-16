@@ -76,3 +76,18 @@ body{
 .res-row.total{border-bottom:none;margin-top:4px}
 .res-row.total span{color:var(--ink);font-weight:600} .res-row.total b{font-size:20px}
 .res-advice{margin-top:10px;font-size:13px;line-height:1.5;color:var(--ink)}
+
+/* read-layer (P3) */
+.src-tag{font-size:10px;font-weight:400;background:#eef2ff;color:#4338ca;padding:2px 8px;border-radius:999px;vertical-align:middle;margin-left:6px}
+.warnbox{background:#fffbeb;border-color:#fde68a}
+.warnbox code{background:#fef3c7;padding:1px 5px;border-radius:5px;font-size:12px}
+.pl-summary{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px}
+.pl-stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.pl-stat span{font-size:12px;color:var(--muted);display:block}
+.pl-stat b{font-size:18px;font-weight:600}
+.pl-list{display:flex;flex-direction:column;gap:6px}
+.pl-row{display:flex;justify-content:space-between;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px}
+.pl-row b{font-weight:600}
+.pl-row .pos{color:#16a34a} .pl-row .neg{color:#dc2626}
+.tab-label{white-space:nowrap}
+@media(max-width:400px){.tab-label{font-size:10px}}

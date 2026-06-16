@@ -13,7 +13,8 @@ $pages = [
     'usage-guide'      => ['title' => 'คู่มือใช้บัญชี',    'file' => 'usage-guide.php'],
     'case-studies'     => ['title' => 'เคสตัวอย่าง',       'file' => 'case-studies.php'],
     'calculator'       => ['title' => 'คำนวณดีล',         'file' => 'calculator.php'],
-    // P3+: 'project-tracker', 'profit-loss'
+    'profit-loss'      => ['title' => 'กำไร-ขาดทุน',       'file' => 'profit-loss.php'],
+    // P4: 'project-tracker'
 ];
 
 $page = (string) ($_GET['page'] ?? 'dashboard');
