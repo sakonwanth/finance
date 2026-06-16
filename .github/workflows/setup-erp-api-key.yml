@@ -1,0 +1,69 @@
+name: Setup ERP API key for finance (.env)
+
+# Manual-only, idempotent. Issues a least-privilege tp-erp API key (read scopes
+# dashboard.financial,reports.view) from the tp-erp checkout on the server and writes
+# TP_ERP_API_URL / TP_ERP_API_KEY into finance's .env so FinanceReadService can read
+# real tp-erp figures. tp-finance stays read-only; the key never leaves the server
+# (only its prefix is printed). Mirrors tp-checkin's setup-hr-api-key.yml.
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    name: Issue + set ERP API key
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check SSH config
+        id: cfg
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: '[ -n "$SSH_HOST" ] && echo "ready=yes" >> "$GITHUB_OUTPUT" || echo "ready=no" >> "$GITHUB_OUTPUT"'
+      - name: Issue + write .env on server
+        if: steps.cfg.outputs.ready == 'yes'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            FIN="${{ secrets.SSH_PATH }}"
+            cd "$FIN" || { echo "finance path missing"; exit 1; }
+            PHP_BIN=$(which php 2>/dev/null || echo php)
+            touch .env
+
+            # Idempotent only if a FULL key (tperp_ + 32 hex) is already present.
+            if grep -qE '^TP_ERP_API_KEY=tperp_[a-f0-9]{32}$' .env; then
+              echo "Valid TP_ERP_API_KEY already set in finance .env — skipping (idempotent)."
+              exit 0
+            fi
+
+            # Locate tp-erp on the server: sibling dirs, domain-swap of the finance
+            # docroot (finance.* -> erp.*, tp-finance -> tp-erp), then a bounded find.
+            ERP_DIR=""
+            for cand in \
+              "$FIN/../tp-erp" "$FIN/../erp" "$FIN/../../tp-erp" \
+              "$(printf '%s' "$FIN" | sed 's#finance#erp#g')"; do
+              if [ -n "$cand" ] && [ -f "$cand/scripts/issue_erp_api_key.php" ]; then ERP_DIR=$(realpath "$cand"); break; fi
+            done
+            if [ -z "$ERP_DIR" ]; then
+              ERP_DIR=$(dirname "$(find /var/www /var/www/vhosts /home /srv -maxdepth 6 -name issue_erp_api_key.php -path '*erp*' 2>/dev/null | head -1)" 2>/dev/null)
+              ERP_DIR=$(dirname "$ERP_DIR" 2>/dev/null)  # scripts/ -> repo root
+            fi
+            if [ -z "$ERP_DIR" ] || [ ! -f "$ERP_DIR/scripts/issue_erp_api_key.php" ]; then
+              echo "tp-erp checkout not found on server. Re-run with the path, or set TP_ERP_API_KEY manually."; exit 1
+            fi
+            echo "Using tp-erp at: $ERP_DIR"
+
+            OUT=$(cd "$ERP_DIR" && $PHP_BIN scripts/issue_erp_api_key.php "tp-finance read-layer" "dashboard.financial,reports.view")
+            # Full key is tperp_ + 32 hex; the printed 12-char "Prefix:" line must NOT match.
+            KEY=$(printf '%s\n' "$OUT" | grep -oE 'tperp_[a-f0-9]{32}' | head -1)
+            if [ -z "$KEY" ]; then echo "failed to issue key"; echo "$OUT"; exit 1; fi
+
+            # Overwrite any existing (possibly stale/short) TP_ERP_API_KEY line, then set URL + key.
+            sed -i '/^TP_ERP_API_KEY=/d' .env
+            grep -qE '^TP_ERP_API_URL=' .env || echo "TP_ERP_API_URL=https://erp.tp-asset.com/api/v1" >> .env
+            echo "TP_ERP_API_KEY=$KEY" >> .env
+
+            echo "ERP API key set in finance .env (prefix: ${KEY:0:12}…, length: ${#KEY}, scopes: dashboard.financial,reports.view)"
