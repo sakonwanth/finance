@@ -1,0 +1,59 @@
+name: Apply tp-erp migration 023 (finance tables)
+
+# Manual-only. Creates erp_bank_accounts + erp_cost_centers on the server's shared
+# tp_crm DB (additive, idempotent — CREATE IF NOT EXISTS) to fix /dashboard/financial
+# 500s, and records 023 in _migrations_run. Pulls the applier + SQL from tp-erp
+# origin/main (tp-erp's own deploy is billing-blocked) into the erp checkout, runs it,
+# then removes the temp applier. Lives in tp-finance because this repo is public so its
+# Actions run; it SSHes to the same server where tp-erp is checked out.
+on:
+  workflow_dispatch:
+
+jobs:
+  migrate:
+    name: Create finance tables on prod
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check SSH config
+        id: cfg
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: '[ -n "$SSH_HOST" ] && echo "ready=yes" >> "$GITHUB_OUTPUT" || echo "ready=no" >> "$GITHUB_OUTPUT"'
+      - name: Run migration on server
+        if: steps.cfg.outputs.ready == 'yes'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            FIN="${{ secrets.SSH_PATH }}"
+            PHP_BIN=$(which php 2>/dev/null || echo php)
+            ERP_DIR=""
+            for cand in \
+              "$FIN/../tp-erp" "$FIN/../erp" "$FIN/../../tp-erp" \
+              "$(printf '%s' "$FIN" | sed 's#finance#erp#g')"; do
+              if [ -n "$cand" ] && [ -f "$cand/bootstrap.php" ] && [ -d "$cand/scripts" ]; then ERP_DIR=$(realpath "$cand"); break; fi
+            done
+            if [ -z "$ERP_DIR" ]; then
+              ERP_DIR=$(dirname "$(dirname "$(find /var/www /var/www/vhosts /home /srv -maxdepth 6 -name issue_erp_api_key.php -path '*erp*' 2>/dev/null | head -1)")")
+            fi
+            [ -d "$ERP_DIR/scripts" ] || { echo "tp-erp checkout not found"; exit 1; }
+            echo "Using tp-erp at: $ERP_DIR"
+            cd "$ERP_DIR"
+            git fetch origin main --quiet 2>&1 || echo "git fetch failed"
+
+            SQL=database/migrations/023_finance_dashboard_missing_tables.sql
+            APP=scripts/apply_migration_023_finance_tables.php
+            git show origin/main:$SQL > "$SQL"
+            git show origin/main:$APP > "$APP"
+            [ -s "$SQL" ] && [ -s "$APP" ] || { echo "failed to fetch migration files from origin/main"; exit 1; }
+
+            echo "================================================"
+            $PHP_BIN "$APP"
+            STATUS=$?
+            echo "================================================"
+            # Leave the SQL (legit migration, reconciled on next deploy); drop nothing else.
+            exit $STATUS
