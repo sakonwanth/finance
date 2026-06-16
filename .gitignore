@@ -1,0 +1,21 @@
+# Env & secrets
+.env
+.env.local
+*.key
+*.pem
+
+# Dependencies
+/vendor/
+
+# Logs
+/logs/
+*.log
+
+# AI agent / IDE workdirs
+.claude/
+.cursor/
+.idea/
+.vscode/
+
+# OS
+.DS_Store
