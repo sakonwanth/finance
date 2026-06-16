@@ -4,11 +4,15 @@ if (!defined('TP_FINANCE')) { http_response_code(403); exit('Forbidden'); }
 $nav = [
     'dashboard'         => ['ภาพรวม', '📊'],
     'account-structure' => ['โครงสร้างบัญชี', '🏦'],
+    'account-mapping'   => ['บัญชี ERP', '🧩'],
+    'flow-audit'        => ['Flow Audit', '🛡️'],
     'usage-guide'       => ['คู่มือใช้บัญชี', '🧭'],
     'case-studies'      => ['เคสตัวอย่าง', '📁'],
     'calculator'        => ['คำนวณดีล', '🧮'],
+    'case-pnl'          => ['กำไรต่อเคส', '🧾'],
     'profit-loss'       => ['กำไร-ขาดทุน', '📈'],
     'project-tracker'   => ['รายโปรเจกต์', '🏗️'],
+    'integration'       => ['เชื่อมระบบ', '🔗'],
 ];
 $e = static fn ($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 ?><!DOCTYPE html>

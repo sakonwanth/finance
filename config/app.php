@@ -21,3 +21,5 @@ define('APP_URL', rtrim(getenv('APP_URL') ?: '', '/'));
 // Read-layer sources (used from P3 onward)
 define('CRM_BASE_URL', rtrim(getenv('CRM_BASE_URL') ?: 'https://crm.tp-asset.com', '/'));
 define('ERP_BASE_URL', rtrim(getenv('ERP_BASE_URL') ?: 'https://erp.tp-asset.com', '/'));
+define('HR_BASE_URL', rtrim(getenv('HR_BASE_URL') ?: 'https://hr.tp-asset.com', '/'));
+define('CHECKIN_BASE_URL', rtrim(getenv('CHECKIN_BASE_URL') ?: 'https://checkin.tp-asset.com', '/'));

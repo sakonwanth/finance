@@ -41,31 +41,41 @@ $fields = [
     var fmt = function(n){ return (isFinite(n)?n:0).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2}); };
     var set = function(k,v){ R.querySelector('[data-r="'+k+'"]').textContent = v; };
     function val(k){ var el=form.querySelector('[data-k="'+k+'"]'); return parseFloat(el && el.value)||0; }
-    function recalc(){
-        var sale=val('sale'), seller=val('seller'), mortgage=val('mortgage'),
-            booking=val('booking'), reno=val('reno'), expense=val('expense'), interest=val('interest');
-        // Canonical arithmetic (mirror of CustomerCaseProfitService: gross = revenue − cost; margin = gross/revenue*100)
-        var totalCost = seller + booking + reno + expense + interest;
-        var net = sale - totalCost;                 // กำไรสุทธิ
-        var grossMargin = sale - seller;            // ส่วนต่างขั้นต้น
-        var realRev = sale - mortgage;              // เงินที่บริษัทได้รับจริง (กันเงินผ่าน)
-        var margin = sale > 0 ? Math.round(net / sale * 10000) / 100 : null;
-        set('gross', fmt(grossMargin) + ' ฿');
-        set('realrev', fmt(realRev) + ' ฿');
-        set('cost', fmt(totalCost) + ' ฿');
-        set('net', (net<0?'−':'') + fmt(Math.abs(net)) + ' ฿');
-        set('margin', margin===null ? '—' : margin + ' %');
-        var nb = R.querySelector('[data-r="net"]');
-        nb.style.color = net>0 ? '#16a34a' : (net<0 ? '#dc2626' : 'inherit');
-        var advice = R.querySelector('[data-r="advice"]');
-        if (sale<=0){ advice.textContent=''; return; }
-        var msg;
-        if (net<=0) msg='⚠️ ดีลนี้ขาดทุน — ทบทวนราคาผู้ขาย/ค่ารีโนเวทก่อนตัดสินใจ';
-        else if (margin!==null && margin<10) msg='🟠 margin ต่ำ ('+margin+'%) — เสี่ยงถ้าค่ารีโนเวทบานปลาย';
-        else msg='🟢 margin '+margin+'% — อยู่ในเกณฑ์ดี (ตรวจสมมติฐานต้นทุนอีกครั้ง)';
-        advice.textContent = msg;
+    function payload(){
+        return {
+            sale: val('sale'), seller: val('seller'), mortgage: val('mortgage'),
+            booking: val('booking'), reno: val('reno'), expense: val('expense'), interest: val('interest')
+        };
     }
-    form.addEventListener('input', recalc);
+    function paint(d){
+        set('gross', fmt(d.gross_margin) + ' ฿');
+        set('realrev', fmt(d.real_revenue) + ' ฿');
+        set('cost', fmt(d.total_cost) + ' ฿');
+        set('net', (d.net_profit<0?'−':'') + fmt(Math.abs(d.net_profit)) + ' ฿');
+        set('margin', d.profit_margin_pct===null ? '—' : d.profit_margin_pct + ' %');
+        var nb = R.querySelector('[data-r="net"]');
+        nb.style.color = d.net_profit>0 ? '#16a34a' : (d.net_profit<0 ? '#dc2626' : 'inherit');
+        var advice = R.querySelector('[data-r="advice"]');
+        advice.textContent = d.advice || '';
+        advice.className = 'res-advice ' + (d.severity ? 'advice-' + d.severity : '');
+    }
+    function recalc(){
+        fetch('api/calculate.php', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json', 'Accept':'application/json'},
+            body: JSON.stringify(payload())
+        }).then(function(res){ return res.json(); }).then(function(json){
+            if (json && json.success && json.data) paint(json.data);
+        }).catch(function(){
+            set('gross', '—'); set('realrev', '—'); set('cost', '—'); set('net', '—'); set('margin', '—');
+            R.querySelector('[data-r="advice"]').textContent = 'เชื่อม API คำนวณไม่ได้';
+        });
+    }
+    var timer;
+    form.addEventListener('input', function(){
+        clearTimeout(timer);
+        timer = setTimeout(recalc, 120);
+    });
     recalc();
 })();
 </script>

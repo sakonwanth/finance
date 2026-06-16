@@ -24,6 +24,11 @@ require_once BASE_PATH . '/config/app.php';
 
 // App services
 require_once BASE_PATH . '/app/FinanceReadService.php';
+require_once BASE_PATH . '/app/CrmReadService.php';
+require_once BASE_PATH . '/app/AccountMappingService.php';
+require_once BASE_PATH . '/app/FlowAuditService.php';
+require_once BASE_PATH . '/app/IntegrationStatusService.php';
+require_once BASE_PATH . '/app/DealCalculator.php';
 
 if (TP_COMMON_AVAILABLE && class_exists('TpCommon\\ErrorHandler')) {
     \TpCommon\ErrorHandler::register('tp-finance', BASE_PATH . '/logs');
