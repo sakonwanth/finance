@@ -1,0 +1,58 @@
+name: Deploy tp-finance
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Validate PHP
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+      - name: PHP syntax check
+        run: |
+          # php -l prints "No syntax errors detected" on success (contains "errors"),
+          # so strip success lines before matching real errors.
+          errors=$(find . -path ./vendor -prune -o -name "*.php" -print -exec php -l {} \; 2>&1 | grep -iv "No syntax errors detected" | grep -i "error" || true)
+          if [ -n "$errors" ]; then echo "$errors"; exit 1; fi
+          echo "All PHP files passed syntax check"
+
+  deploy:
+    name: Deploy (SSH git-pull)
+    needs: [validate]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      # Secrets can't be used in `if:`, so probe here and skip (not fail) when unset.
+      - name: Check deploy config
+        id: cfg
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [ -n "$DEPLOY_HOST" ]; then echo "ready=yes" >> "$GITHUB_OUTPUT"
+          else echo "ready=no" >> "$GITHUB_OUTPUT"
+            echo "::notice::DEPLOY_HOST not set — skipping deploy (set DEPLOY_HOST/DEPLOY_USER/DEPLOY_KEY/DEPLOY_PATH to enable)"
+          fi
+      - name: Deploy on server
+        if: steps.cfg.outputs.ready == 'yes'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            set -e
+            cd "${{ secrets.DEPLOY_PATH }}" || { echo "DEPLOY_PATH missing"; exit 1; }
+            git pull origin main
+            PHP_BIN=$(which php 2>/dev/null || echo php)
+            COMPOSER=$(which composer 2>/dev/null || echo "")
+            if [ -n "$COMPOSER" ] && [ -f composer.json ]; then
+              $COMPOSER install --no-interaction --no-dev --optimize-autoloader 2>&1 || echo "composer skipped"
+            fi
+            echo "tp-finance deployed: $(git log -1 --format='%h %s')"
