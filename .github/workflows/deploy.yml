@@ -11,21 +11,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: shivammathur/setup-php@v2
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
+          extensions: pdo, pdo_mysql, mbstring, json
       - name: PHP syntax check
         run: |
-          # php -l prints "No syntax errors detected" on success (contains "errors"),
-          # so strip success lines before matching real errors.
-          errors=$(find . -path ./vendor -prune -o -name "*.php" -print -exec php -l {} \; 2>&1 | grep -iv "No syntax errors detected" | grep -i "error" || true)
-          if [ -n "$errors" ]; then echo "$errors"; exit 1; fi
-          echo "All PHP files passed syntax check"
+          echo "Checking PHP syntax..."
+          find . -name "*.php" -not -path "./vendor/*" -print0 | xargs -0 -n1 php -l
+          echo "All PHP files valid"
 
   deploy:
     name: Deploy (SSH git-pull)
     needs: [validate]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       # Secrets can't be used in `if:`, so probe here and skip (not fail) when unset.
