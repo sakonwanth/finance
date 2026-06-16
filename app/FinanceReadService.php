@@ -62,6 +62,56 @@ final class FinanceReadService
         ];
     }
 
+    /**
+     * Per-project P&L from tp-erp /reports/project-pl (read-only). Same fail-soft contract.
+     */
+    public static function projectPnl(?int $year = null): array
+    {
+        $base = ['available' => false, 'reason' => null, 'year' => null, 'projects' => [], 'totals' => null];
+
+        if (!defined('TP_COMMON_AVAILABLE') || !TP_COMMON_AVAILABLE || !class_exists('TpCommon\\Http\\ErpClient')) {
+            return ['reason' => 'tp-common ยังไม่พร้อม (composer install)'] + $base;
+        }
+        if (!(getenv('TP_ERP_API_KEY') ?: getenv('ERP_API_KEY'))) {
+            return ['reason' => 'ยังไม่ตั้ง TP_ERP_API_KEY บนเซิร์ฟเวอร์'] + $base;
+        }
+        try {
+            $erp = \TpCommon\Http\ErpClient::fromEnv();
+            $resp = $erp->get('/reports/project-pl', $year ? ['year' => $year] : []);
+        } catch (\Throwable $e) {
+            return ['reason' => 'เชื่อมต่อ tp-erp ไม่ได้'] + $base;
+        }
+        if (!is_array($resp) || ($resp['success'] ?? false) !== true) {
+            return ['reason' => 'tp-erp ปฏิเสธคำขอ (ตรวจ API key/scope)'] + $base;
+        }
+        $d = $resp['data'] ?? [];
+        $projects = [];
+        foreach (($d['projects'] ?? []) as $p) {
+            if (!is_array($p)) { continue; }
+            $projects[] = [
+                'name'    => (string)($p['project_name'] ?? $p['project_code'] ?? '—'),
+                'code'    => (string)($p['project_code'] ?? ''),
+                'status'  => (string)($p['status'] ?? ''),
+                'revenue' => (float)($p['erp_revenue'] ?? 0),
+                'cost'    => (float)($p['erp_total_cost'] ?? 0),
+                'profit'  => (float)($p['erp_profit'] ?? 0),
+            ];
+        }
+        $t = $d['totals'] ?? [];
+        return [
+            'available' => true,
+            'reason'    => null,
+            'year'      => $d['year'] ?? $year,
+            'projects'  => $projects,
+            'totals'    => [
+                'revenue' => (float)($t['erp_revenue'] ?? 0),
+                'cost'    => (float)($t['erp_total_cost'] ?? 0),
+                'profit'  => (float)($t['erp_profit'] ?? 0),
+                'count'   => (int)($t['projects'] ?? count($projects)),
+            ],
+        ];
+    }
+
     /** Normalize a *_by_category list to [{name, amount}], skipping malformed rows. */
     private static function categories(mixed $rows): array
     {

@@ -8,6 +8,7 @@ $nav = [
     'case-studies'      => ['เคสตัวอย่าง', '📁'],
     'calculator'        => ['คำนวณดีล', '🧮'],
     'profit-loss'       => ['กำไร-ขาดทุน', '📈'],
+    'project-tracker'   => ['รายโปรเจกต์', '🏗️'],
 ];
 $e = static fn ($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 ?><!DOCTYPE html>

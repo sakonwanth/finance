@@ -14,7 +14,7 @@ $pages = [
     'case-studies'     => ['title' => 'เคสตัวอย่าง',       'file' => 'case-studies.php'],
     'calculator'       => ['title' => 'คำนวณดีล',         'file' => 'calculator.php'],
     'profit-loss'      => ['title' => 'กำไร-ขาดทุน',       'file' => 'profit-loss.php'],
-    // P4: 'project-tracker'
+    'project-tracker'  => ['title' => 'รายโปรเจกต์',       'file' => 'project-tracker.php'],
 ];
 
 $page = (string) ($_GET['page'] ?? 'dashboard');
