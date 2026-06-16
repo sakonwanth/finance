@@ -1,0 +1,47 @@
+name: Verify finance ERP read path
+
+# Manual-only. Confirms the TP_ERP_API_KEY in finance's .env actually authorizes
+# against tp-erp's read endpoints (dashboard.financial + reports.view), end to end,
+# WITHOUT printing the key or any financial values — only HTTP status + success flag.
+# Run after setup-erp-api-key to prove the read-layer is live.
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Probe tp-erp read endpoints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check SSH config
+        id: cfg
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: '[ -n "$SSH_HOST" ] && echo "ready=yes" >> "$GITHUB_OUTPUT" || echo "ready=no" >> "$GITHUB_OUTPUT"'
+      - name: Probe on server
+        if: steps.cfg.outputs.ready == 'yes'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            cd "${{ secrets.SSH_PATH }}" || { echo "finance path missing"; exit 1; }
+            KEY=$(grep -E '^TP_ERP_API_KEY=' .env | head -1 | cut -d= -f2-)
+            URL=$(grep -E '^TP_ERP_API_URL=' .env | head -1 | cut -d= -f2-)
+            URL=${URL:-https://erp.tp-asset.com/api/v1}
+            if [ -z "$KEY" ]; then echo "no TP_ERP_API_KEY in finance .env"; exit 1; fi
+            echo "Probing $URL (key prefix: ${KEY:0:12}…) — values NOT printed"
+            fail=0
+            for ep in "/dashboard/financial" "/reports/project-pl"; do
+              body=$(curl -s -m 20 -w '\nHTTP:%{http_code}' -H "Authorization: Bearer $KEY" "$URL$ep" || true)
+              code=$(printf '%s' "$body" | sed -n 's/.*HTTP:\([0-9]*\)$/\1/p')
+              ok=$(printf '%s' "$body" | grep -oE '"success"[: ]*true' | head -1)
+              if [ "$code" = "200" ] && [ -n "$ok" ]; then
+                echo "  $ep -> HTTP $code, success=true ✓"
+              else
+                echo "  $ep -> HTTP ${code:-?}, success=${ok:+true}${ok:-false} ✗"; fail=1
+              fi
+            done
+            [ "$fail" = "0" ] && echo "ERP read path LIVE — finance can read tp-erp." || { echo "ERP read path NOT working (check scopes)."; exit 1; }
