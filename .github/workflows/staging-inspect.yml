@@ -1,0 +1,37 @@
+name: Staging DB inspect (read-only)
+
+# Manual, read-only. tp_crm_staging already exists — inspect both DBs (size, table count,
+# row counts of key tables, newest row timestamps) to decide whether to reuse or refresh it.
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check SSH config
+        id: cfg
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: '[ -n "$SSH_HOST" ] && echo "ready=yes" >> "$GITHUB_OUTPUT" || echo "ready=no" >> "$GITHUB_OUTPUT"'
+      - name: Inspect on server
+        if: steps.cfg.outputs.ready == 'yes'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            q() { plesk db "$1" 2>&1; }
+            echo "=== sizes (MB) + table counts ==="
+            q "SELECT table_schema, ROUND(SUM(data_length+index_length)/1024/1024) AS mb, COUNT(*) AS tables FROM information_schema.tables WHERE table_schema IN ('tp_crm','tp_crm_staging') GROUP BY table_schema"
+            echo "=== tp_crm_staging: key table row counts ==="
+            for t in users hr_attendances hr_leave_requests system_settings; do
+              echo "-- $t --"
+              q "SELECT COUNT(*) AS rows_in_staging FROM tp_crm_staging.$t" 2>&1 | head -4
+            done
+            echo "=== freshness: newest hr_attendances date in each DB ==="
+            q "SELECT 'prod' AS db, MAX(attendance_date) AS newest FROM tp_crm.hr_attendances UNION ALL SELECT 'staging', MAX(attendance_date) FROM tp_crm_staging.hr_attendances" 2>&1 | head -6
+            echo "=== who owns tp_crm_staging (Plesk db user mapping) ==="
+            q "SELECT DISTINCT grantee FROM information_schema.schema_privileges WHERE table_schema='tp_crm_staging'" 2>&1 | head -10
