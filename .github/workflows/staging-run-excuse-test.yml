@@ -1,0 +1,36 @@
+name: Run excuse-late staging test
+
+# Manual. Runs tp-crm scripts/staging_test_excuse_late.php against tp_crm_staging — exercises
+# HrService::excuseLate (the path admin_toggle_excused now uses) on a throwaway row and
+# asserts the mutation matches the old direct SQL. Staging only (script self-aborts otherwise).
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check SSH config
+        id: cfg
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: '[ -n "$SSH_HOST" ] && echo "ready=yes" >> "$GITHUB_OUTPUT" || echo "ready=no" >> "$GITHUB_OUTPUT"'
+      - name: Run on server (staging DB)
+        if: steps.cfg.outputs.ready == 'yes'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            CRM=/var/www/vhosts/tp-asset.com/crm.tp-asset.com
+            cd "$CRM"
+            git fetch origin main --quiet 2>&1 || echo "fetch warn"
+            git show origin/main:scripts/staging_test_excuse_late.php > scripts/staging_test_excuse_late.php
+            export DB_NAME=tp_crm_staging TP_CRM_DB_NAME=tp_crm_staging USE_TPHR_PAYROLL=0 USE_TPERP_API=0
+            PHP_BIN=$(which php 2>/dev/null || echo php)
+            $PHP_BIN scripts/staging_test_excuse_late.php 2>&1 | tail -30
+            echo "=== prod leak guard (must stay 0) ==="
+            plesk db "SELECT COUNT(*) AS prod_2099_rows FROM tp_crm.hr_attendances WHERE attendance_date='2099-11-15'" 2>&1
