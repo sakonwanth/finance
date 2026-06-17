@@ -3,7 +3,35 @@ if (!defined('TP_FINANCE')) { http_response_code(403); exit('Forbidden'); }
 $accounts = require BASE_PATH . '/views/data/accounts.php';
 $e = static fn ($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 ?>
-<p class="lead">โครงสร้างบัญชี 4 ตัวของบริษัท และทางลัดเข้าแต่ละโมดูล — ตัวเลขการเงินจริง (รายรับ/กำไร) จะดึงจาก tp-erp/tp-crm ในเฟสถัดไป</p>
+<section class="dashboard-hero">
+    <div class="hero-panel">
+        <div class="hero-kicker"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> Finance control layer</div>
+        <h2>ควบคุม Flow เงินของบริษัทจากแหล่งข้อมูลเดียว</h2>
+        <p>โครงสร้างบัญชี 4 ใบ, mapping กับ ERP, audit policy และมุมมองกำไรขาดทุนอยู่ในหน้าระบบเดียว โดย tp-finance อ่านข้อมูลจริงจาก tp-erp/tp-crm และไม่สร้างตัวเลขการเงินซ้ำเอง</p>
+        <div class="hero-actions">
+            <a class="btn primary" href="?page=flow-audit"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> ตรวจ Flow Audit</a>
+            <a class="btn" href="?page=calculator"><i class="fa-solid fa-calculator" aria-hidden="true"></i> คำนวณดีล</a>
+            <a class="btn" href="?page=profit-loss"><i class="fa-solid fa-chart-pie" aria-hidden="true"></i> ดู P&L</a>
+        </div>
+    </div>
+    <aside class="module-panel">
+        <h2>งานที่ใช้บ่อย</h2>
+        <div class="module-list">
+            <a class="module-link" href="?page=account-mapping">
+                <i class="fa-solid fa-code-branch" aria-hidden="true"></i>
+                <span>บัญชี ERP <small>ตรวจ bank account และ GL mapping</small></span>
+            </a>
+            <a class="module-link" href="?page=project-tracker">
+                <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
+                <span>รายโปรเจกต์ <small>รายรับ ต้นทุน และกำไรต่อโปรเจกต์</small></span>
+            </a>
+            <a class="module-link" href="?page=case-pnl">
+                <i class="fa-solid fa-file-invoice-dollar" aria-hidden="true"></i>
+                <span>กำไรต่อเคส <small>อ่านจาก CustomerCaseProfitService</small></span>
+            </a>
+        </div>
+    </aside>
+</section>
 
 <section class="card-grid">
     <?php foreach ($accounts as $a): ?>
