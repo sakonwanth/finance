@@ -1,0 +1,38 @@
+name: Diag leftover rows + salary parity (read-only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check SSH config
+        id: cfg
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: '[ -n "$SSH_HOST" ] && echo "ready=yes" >> "$GITHUB_OUTPUT" || echo "ready=no" >> "$GITHUB_OUTPUT"'
+      - name: Diag on server
+        if: steps.cfg.outputs.ready == 'yes'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          command_timeout: 15m
+          script: |
+            echo "===== (ข) context of the 6400 renovation: project #25 / property #101 / crm project #253 ====="
+            plesk db "SELECT id, project_id, property_id, contract_id, total_budget, status, created_at FROM tp_crm.erp_renovation_projects WHERE id=25" 2>&1
+            plesk db "SELECT id, property_code, title, status FROM tp_crm.properties WHERE id=101" 2>&1
+            plesk db "SELECT id, project_code, project_name, customer_id, status FROM tp_crm.projects WHERE id=253" 2>&1
+            plesk db "SELECT e.id, e.amount, e.description, e.drawdown_id, e.created_at FROM tp_crm.erp_renovation_expenses e WHERE e.renovation_project_id=25 ORDER BY e.id" 2>&1
+            echo "===== (ค) salary parity detail (read-only compare CRM vs HR payroll) ====="
+            CRM=/var/www/vhosts/tp-asset.com/crm.tp-asset.com
+            cd "$CRM"
+            PHP_BIN=$(which php 2>/dev/null || find /opt/plesk/php -name php -type f 2>/dev/null | sort -rV | head -1 || echo php)
+            if [ -f scripts/payroll_crm_hr_parity.php ]; then
+              $PHP_BIN scripts/payroll_crm_hr_parity.php --strict 2>&1 | grep -iE "mismatch|drift|user|employee|crm=|hr=|diff|month|inclusion|FAIL|PASS|setup" | head -40
+            else
+              echo "parity script not found"
+            fi
