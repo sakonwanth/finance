@@ -1,0 +1,29 @@
+name: Inspect prod payroll leak (read-only)
+
+# Manual, read-only. Shows the exact recent payroll-referenced erp_company_transactions
+# row(s) in PROD created by the staging e2e (API mode hit prod). Confirms the artifact
+# before any cleanup. NO changes.
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check SSH config
+        id: cfg
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: '[ -n "$SSH_HOST" ] && echo "ready=yes" >> "$GITHUB_OUTPUT" || echo "ready=no" >> "$GITHUB_OUTPUT"'
+      - name: Inspect on server
+        if: steps.cfg.outputs.ready == 'yes'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            plesk db "SELECT id, transaction_code, transaction_type, amount, reference_type, reference_id, description, payment_status, created_at, created_by FROM tp_crm.erp_company_transactions WHERE reference_type='payroll' AND created_at >= NOW() - INTERVAL 2 HOUR ORDER BY id DESC" 2>&1
+            echo "=== does PROD have a real payroll_run with that reference_id? ==="
+            plesk db "SELECT pr.id, pr.status, pr.created_at FROM tp_crm.payroll_runs pr WHERE pr.id IN (SELECT reference_id FROM tp_crm.erp_company_transactions WHERE reference_type='payroll' AND created_at >= NOW() - INTERVAL 2 HOUR)" 2>&1
