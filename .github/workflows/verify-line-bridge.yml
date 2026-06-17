@@ -43,9 +43,13 @@ jobs:
             [ -f "$DIR/core/CrmLineNotifierBridge.php" ] || { echo "$APP bridge not found"; exit 1; }
             echo "Verifying bridge at: $DIR"
             PHP_BIN=$(which php 2>/dev/null || echo php)
+            # Real runtime resolves tp-crm via TP_CRM_PATH in .env (tp-crm is crm.tp-asset.com,
+            # not a ../tp-crm sibling). Mirror that so bridge_load can find CRM's LINE files.
+            CRMPATH=$(grep -E '^TP_CRM_PATH=' "$DIR/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"'"'"'')
             cat > /tmp/_verify_line_bridge.php <<PHP
             <?php
             define('BASE_PATH', '$DIR');
+            if ('$CRMPATH' !== '') { putenv('TP_CRM_PATH=$CRMPATH'); \$_ENV['TP_CRM_PATH']='$CRMPATH'; }
             require '$DIR/core/CrmLineNotifierBridge.php';
             \$fns = ['crm_line_bridge_load','crm_line_notify_new_leave','crm_line_notify_leave_decision','crm_line_notify_dayoff_decision','crm_line_notify_outside_attendance_decision','crm_line_event_context'];
             \$miss = array_filter(\$fns, fn(\$f) => !function_exists(\$f));
