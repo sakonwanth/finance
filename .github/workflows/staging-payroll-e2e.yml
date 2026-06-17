@@ -1,0 +1,41 @@
+name: Payroll e2e on staging
+
+# Manual. Runs tp-crm's payroll mark-paid ledger e2e against tp_crm_staging (NOT prod).
+# The script self-seeds an approved payroll_run, marks it paid, verifies the ledger row,
+# cancels + cleans up its own test rows. Safe on staging. Proves the off-prod payroll
+# verification path works — the gate Phase 2.1's write-migration was blocked on.
+on:
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check SSH config
+        id: cfg
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: '[ -n "$SSH_HOST" ] && echo "ready=yes" >> "$GITHUB_OUTPUT" || echo "ready=no" >> "$GITHUB_OUTPUT"'
+      - name: Run on server (staging DB)
+        if: steps.cfg.outputs.ready == 'yes'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          command_timeout: 15m
+          script: |
+            set -e
+            CRM="/var/www/vhosts/tp-asset.com/crm.tp-asset.com"
+            cd "$CRM"
+            # Hard safety: only ever run against the staging schema.
+            export DB_NAME=tp_crm_staging
+            export TP_CRM_DB_NAME=tp_crm_staging
+            PHP_BIN=$(which php 2>/dev/null || echo php)
+            echo "Target schema check:"
+            $PHP_BIN scripts/staging_harness_check.php 2>&1 | grep -E "current schema" || true
+            SCHEMA=$($PHP_BIN scripts/staging_harness_check.php 2>&1 | sed -n 's/^current schema = //p' | head -1)
+            [ "$SCHEMA" = "tp_crm_staging" ] || { echo "ABORT: resolved schema is '$SCHEMA', not tp_crm_staging"; exit 1; }
+            echo "===== payroll mark-paid e2e (staging) ====="
+            $PHP_BIN scripts/e2e_payroll_mark_paid_ledger_live.php --live 2>&1 | tail -40
