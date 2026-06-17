@@ -29,7 +29,11 @@ jobs:
             cd "$CRM"
             git fetch origin main --quiet 2>&1 || echo "fetch warn"
             git show origin/main:scripts/staging_test_excuse_late.php > scripts/staging_test_excuse_late.php
-            export DB_NAME=tp_crm_staging TP_CRM_DB_NAME=tp_crm_staging USE_TPHR_PAYROLL=0 USE_TPERP_API=0
+            # Isolate HrService/ErpService from PROD: HrService.useApi is gated on TP_HR_API_KEY
+            # presence (NOT the USE_TPHR_PAYROLL flag), so unset the keys to force direct SQL on
+            # the staging DB. (Flags kept too, for ErpService.)
+            export DB_NAME=tp_crm_staging TP_CRM_DB_NAME=tp_crm_staging
+            export TP_HR_API_KEY= HR_API_KEY= TP_ERP_API_KEY= ERP_API_KEY= USE_TPHR_PAYROLL=0 USE_TPERP_API=0
             PHP_BIN=$(which php 2>/dev/null || echo php)
             $PHP_BIN scripts/staging_test_excuse_late.php 2>&1 | tail -30
             echo "=== prod leak guard (must stay 0) ==="
