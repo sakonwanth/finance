@@ -1,0 +1,53 @@
+name: Check tp-crm HR API mode
+
+# Manual, read-only. Phase 2.1 step 0: reports whether tp-crm prod is configured to use
+# the tp-hr API (TP_HR_API_KEY + USE_TPHR_PAYROLL) or still runs on direct hr_* SQL.
+# Determines whether the HrService API path is even active before migrating reads/writes.
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Inspect tp-crm HR config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check SSH config
+        id: cfg
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: '[ -n "$SSH_HOST" ] && echo "ready=yes" >> "$GITHUB_OUTPUT" || echo "ready=no" >> "$GITHUB_OUTPUT"'
+      - name: Inspect on server
+        if: steps.cfg.outputs.ready == 'yes'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            FIN="${{ secrets.SSH_PATH }}"
+            CRM=$(printf '%s' "$FIN" | sed 's#finance#crm#g')
+            [ -f "$CRM/.env" ] || CRM=$(dirname "$(dirname "$(find /var/www /var/www/vhosts -maxdepth 6 -path '*crm*/core/Services/HrService.php' 2>/dev/null | head -1)")")
+            [ -f "$CRM/.env" ] || { echo "tp-crm .env not found"; exit 1; }
+            echo "tp-crm at: $CRM"
+            echo "--- HR API config in tp-crm .env ---"
+            if grep -qE '^TP_HR_API_KEY=tphr_[a-f0-9]{32}$' "$CRM/.env"; then echo "TP_HR_API_KEY: present (full key)"; else
+              grep -qE '^TP_HR_API_KEY=.' "$CRM/.env" && echo "TP_HR_API_KEY: present (NOT full-key format)" || echo "TP_HR_API_KEY: MISSING"; fi
+            grep -E '^(USE_TPHR_PAYROLL|HR_API_KEY|TP_HR_API_URL)=' "$CRM/.env" || echo "(USE_TPHR_PAYROLL / TP_HR_API_URL not in .env)"
+            echo "--- USE_TPHR_PAYROLL in system_settings (DB, read-only) ---"
+            PHP_BIN=$(which php 2>/dev/null || echo php)
+            cat > /tmp/_chk_hrmode.php <<'PHP'
+            <?php
+            $dir = getenv('CRMDIR');
+            require $dir . '/bootstrap.php';
+            try {
+                $pdo = (function(){ foreach (['Core\\Database','Database'] as $c){ if (class_exists($c) && method_exists($c,'getConnection')) return $c::getConnection(); if (class_exists($c) && method_exists($c,'getInstance')) return $c::getInstance()->getConnection(); } return null; })();
+                if (!$pdo) { echo "system_settings: (no PDO accessor)\n"; exit; }
+                $s = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key='USE_TPHR_PAYROLL' LIMIT 1");
+                $v = $s ? $s->fetchColumn() : false;
+                echo "USE_TPHR_PAYROLL (system_settings) = " . ($v === false ? "(unset)" : var_export($v, true)) . "\n";
+            } catch (Throwable $e) { echo "system_settings check skipped: " . $e->getMessage() . "\n"; }
+            PHP
+            CRMDIR="$CRM" $PHP_BIN /tmp/_chk_hrmode.php 2>&1 || true
+            rm -f /tmp/_chk_hrmode.php
