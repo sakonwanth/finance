@@ -1,0 +1,56 @@
+name: Verify CRM LINE bridge loads
+
+# Manual, non-destructive. After the Phase 2.3 consolidation, confirms an app's
+# CrmLineNotifierBridge shim resolves the tp-common canonical file and that
+# crm_line_bridge_load() can load tp-crm's LINE files on the server. Call sites are
+# guarded by function_exists(), so a broken require fails SILENTLY (notifications just
+# stop) — this catches that. Loading is side-effect-free (no LINE message is sent).
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'Which app dir to verify (hr or checkin)'
+        required: true
+        default: 'hr'
+
+jobs:
+  verify:
+    name: Probe bridge load on server
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check SSH config
+        id: cfg
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: '[ -n "$SSH_HOST" ] && echo "ready=yes" >> "$GITHUB_OUTPUT" || echo "ready=no" >> "$GITHUB_OUTPUT"'
+      - name: Probe on server
+        if: steps.cfg.outputs.ready == 'yes'
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          APP: ${{ inputs.app }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          envs: APP
+          script: |
+            set -e
+            case "$APP" in hr|checkin) ;; *) echo "app must be hr or checkin"; exit 2;; esac
+            FIN="${{ secrets.SSH_PATH }}"
+            DIR=$(printf '%s' "$FIN" | sed "s#finance#$APP#g")
+            [ -f "$DIR/core/CrmLineNotifierBridge.php" ] || DIR=$(dirname "$(dirname "$(find /var/www /var/www/vhosts -maxdepth 6 -path "*$APP*/core/CrmLineNotifierBridge.php" 2>/dev/null | head -1)")")
+            [ -f "$DIR/core/CrmLineNotifierBridge.php" ] || { echo "$APP bridge not found"; exit 1; }
+            echo "Verifying bridge at: $DIR"
+            PHP_BIN=$(which php 2>/dev/null || echo php)
+            cat > /tmp/_verify_line_bridge.php <<PHP
+            <?php
+            define('BASE_PATH', '$DIR');
+            require '$DIR/core/CrmLineNotifierBridge.php';
+            \$fns = ['crm_line_bridge_load','crm_line_notify_new_leave','crm_line_notify_leave_decision','crm_line_notify_dayoff_decision','crm_line_notify_outside_attendance_decision','crm_line_event_context'];
+            \$miss = array_filter(\$fns, fn(\$f) => !function_exists(\$f));
+            echo \$miss ? ('FUNCS_MISSING: '.implode(',', \$miss)."\n") : "FUNCS_OK\n";
+            echo function_exists('crm_line_bridge_load') && crm_line_bridge_load() ? "BRIDGE_LOAD_OK\n" : "BRIDGE_LOAD_FAIL\n";
+            PHP
+            $PHP_BIN /tmp/_verify_line_bridge.php 2>&1 || true
+            rm -f /tmp/_verify_line_bridge.php
