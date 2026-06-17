@@ -1,0 +1,50 @@
+name: Check tp-checkin deployed state
+
+# Manual, read-only. Confirms the prod tp-checkin checkout actually has the single-writer
+# code + HR key before the flag is flipped, and reports git HEAD vs origin/main so we know
+# whether the deployed code is current (tp-checkin's own deploy is billing-blocked).
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Inspect checkin checkout
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check SSH config
+        id: cfg
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: '[ -n "$SSH_HOST" ] && echo "ready=yes" >> "$GITHUB_OUTPUT" || echo "ready=no" >> "$GITHUB_OUTPUT"'
+      - name: Inspect on server
+        if: steps.cfg.outputs.ready == 'yes'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            FIN="${{ secrets.SSH_PATH }}"
+            CHECKIN=""
+            for cand in \
+              "$(printf '%s' "$FIN" | sed 's#finance#checkin#g')" \
+              "$FIN/../tp-checkin" "$FIN/../checkin"; do
+              if [ -n "$cand" ] && [ -f "$cand/api/attendance.php" ]; then CHECKIN=$(realpath "$cand"); break; fi
+            done
+            [ -n "$CHECKIN" ] || { echo "checkin not found"; exit 1; }
+            echo "checkin dir: $CHECKIN"
+            cd "$CHECKIN"
+            git fetch origin main --quiet 2>&1 || echo "git fetch failed"
+            echo "HEAD:        $(git rev-parse --short HEAD 2>/dev/null)"
+            echo "origin/main: $(git rev-parse --short origin/main 2>/dev/null)"
+            if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]; then echo "SYNC: deployed == origin/main"; else echo "SYNC: deployed BEHIND origin/main ($(git rev-list --count HEAD..origin/main 2>/dev/null) commits)"; fi
+            echo "--- single-writer code present in deployed api/attendance.php? ---"
+            for fn in checkinHrAttendanceWriterEnabled checkinRejectIfHrApiMisconfigured checkinSubmitCheckInThroughHrApi checkinSubmitCheckOutThroughHrApi; do
+              if grep -q "function $fn" api/attendance.php; then echo "  OK   $fn"; else echo "  MISS $fn"; fi
+            done
+            echo "--- flag + key in .env ---"
+            grep -E '^TP_CHECKIN_USE_HR_ATTENDANCE_API=' .env || echo "  (flag not set → defaults 0)"
+            if grep -qE '^TP_HR_API_KEY=tphr_[a-f0-9]{32}$' .env; then echo "  TP_HR_API_KEY: present (full key)"; else echo "  TP_HR_API_KEY: MISSING/short"; fi
+            grep -E '^TP_HR_API_URL=' .env || echo "  TP_HR_API_URL: (unset → default)"
