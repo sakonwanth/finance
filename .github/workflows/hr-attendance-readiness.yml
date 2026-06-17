@@ -1,0 +1,61 @@
+name: HR attendance single-writer readiness
+
+# Manual, NON-DESTRUCTIVE. Probes whether tp-checkin's TP_HR_API_KEY can write attendance
+# via tp-hr before flipping TP_CHECKIN_USE_HR_ATTENDANCE_API=1. POSTs /attendance/checkin
+# with user_id=0: the HR endpoint checks scope (attendance.write_all) FIRST, then rejects
+# user_id<=0 with 400 BEFORE any DB transaction — so a 400 "user_id required" proves the
+# key + scope + endpoint are ready WITHOUT creating any attendance row. 401/403 = not ready.
+# Reads the key from checkin's .env on the server; the key never passes through chat.
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: Probe HR write path (non-destructive)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check SSH config
+        id: cfg
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: '[ -n "$SSH_HOST" ] && echo "ready=yes" >> "$GITHUB_OUTPUT" || echo "ready=no" >> "$GITHUB_OUTPUT"'
+      - name: Probe on server
+        if: steps.cfg.outputs.ready == 'yes'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            FIN="${{ secrets.SSH_PATH }}"
+            CHECKIN=""
+            for cand in \
+              "$(printf '%s' "$FIN" | sed 's#finance#checkin#g')" \
+              "$FIN/../tp-checkin" "$FIN/../checkin"; do
+              if [ -n "$cand" ] && [ -f "$cand/.env" ] && [ -f "$cand/api/attendance.php" ]; then CHECKIN=$(realpath "$cand"); break; fi
+            done
+            if [ -z "$CHECKIN" ]; then
+              CHECKIN=$(dirname "$(dirname "$(find /var/www /var/www/vhosts -maxdepth 6 -name attendance.php -path '*checkin*/api/*' 2>/dev/null | head -1)")")
+            fi
+            [ -f "$CHECKIN/.env" ] || { echo "checkin .env not found"; exit 1; }
+            echo "Using checkin at: $CHECKIN"
+            KEY=$(grep -E '^TP_HR_API_KEY=' "$CHECKIN/.env" | head -1 | cut -d= -f2-)
+            URL=$(grep -E '^TP_HR_API_URL=' "$CHECKIN/.env" | head -1 | cut -d= -f2-)
+            URL=${URL:-https://hr.tp-asset.com/api/v1}
+            [ -n "$KEY" ] || { echo "no TP_HR_API_KEY in checkin .env — NOT READY"; exit 1; }
+            echo "Probing $URL/attendance/checkin (key prefix: ${KEY:0:12}…, user_id=0, non-destructive)"
+            body=$(curl -s -m 20 -w '\nHTTP:%{http_code}' -X POST \
+              -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+              -d '{"user_id":0,"type":"GPS"}' "$URL/attendance/checkin" || true)
+            code=$(printf '%s' "$body" | sed -n 's/.*HTTP:\([0-9]*\)$/\1/p')
+            msg=$(printf '%s' "$body" | sed 's/HTTP:[0-9]*$//' | tr -d '\n')
+            echo "HTTP $code"
+            echo "resp: $msg"
+            case "$code" in
+              400) echo "READY ✓ — key+scope+endpoint OK (rejected user_id=0 before any write)";;
+              401|403) echo "NOT READY ✗ — auth/scope problem (key needs attendance.write_all)"; exit 1;;
+              404) echo "NOT READY ✗ — endpoint/route not found"; exit 1;;
+              *)   echo "UNEXPECTED ($code) — inspect resp above before flipping"; exit 1;;
+            esac
