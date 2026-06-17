@@ -29,13 +29,17 @@ jobs:
             set -e
             CRM="/var/www/vhosts/tp-asset.com/crm.tp-asset.com"
             cd "$CRM"
-            # Hard safety: only ever run against the staging schema.
+            # Hard safety: staging schema + force direct DB (no prod HR/ERP API calls).
             export DB_NAME=tp_crm_staging
             export TP_CRM_DB_NAME=tp_crm_staging
+            export USE_TPERP_API=0
+            export USE_TPHR_PAYROLL=0
             PHP_BIN=$(which php 2>/dev/null || echo php)
             echo "Target schema check:"
-            $PHP_BIN scripts/staging_harness_check.php 2>&1 | grep -E "current schema" || true
             SCHEMA=$($PHP_BIN scripts/staging_harness_check.php 2>&1 | sed -n 's/^current schema = //p' | head -1)
+            echo "  resolved schema = $SCHEMA"
             [ "$SCHEMA" = "tp_crm_staging" ] || { echo "ABORT: resolved schema is '$SCHEMA', not tp_crm_staging"; exit 1; }
             echo "===== payroll mark-paid e2e (staging) ====="
             $PHP_BIN scripts/e2e_payroll_mark_paid_ledger_live.php --live 2>&1 | tail -40
+            echo "===== prod leak guard (must stay 0) ====="
+            plesk db "SELECT COUNT(*) AS prod_recent_payroll_tx FROM tp_crm.erp_company_transactions WHERE reference_type='payroll' AND created_at >= NOW() - INTERVAL 30 MINUTE" 2>&1
