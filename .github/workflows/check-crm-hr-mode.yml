@@ -42,7 +42,7 @@ jobs:
             $dir = getenv('CRMDIR');
             require $dir . '/bootstrap.php';
             try {
-                $pdo = (function(){ foreach (['Core\\Database','Database'] as $c){ if (class_exists($c) && method_exists($c,'getConnection')) return $c::getConnection(); if (class_exists($c) && method_exists($c,'getInstance')) return $c::getInstance()->getConnection(); } return null; })();
+                $pdo = (function(){ foreach (['Core\\Database','Database'] as $c){ if (!class_exists($c)) continue; try { if (method_exists($c,'getInstance')) { $i=$c::getInstance(); if (method_exists($i,'getConnection')) return $i->getConnection(); if (method_exists($i,'pdo')) return $i->pdo(); } } catch (Throwable $e) {} try { if (method_exists($c,'getConnection')) { $r=new \ReflectionMethod($c,'getConnection'); if ($r->isStatic()) return $c::getConnection(); } } catch (Throwable $e) {} } return null; })();
                 if (!$pdo) { echo "system_settings: (no PDO accessor)\n"; exit; }
                 $s = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key='USE_TPHR_PAYROLL' LIMIT 1");
                 $v = $s ? $s->fetchColumn() : false;
