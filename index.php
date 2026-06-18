@@ -7,6 +7,28 @@ require_once __DIR__ . '/bootstrap.php';
 
 tpfin_require_login(); // internal staff SSO gate
 
+$redirectMode = strtolower(trim((string)(getenv('FINANCE_WEB_MODE') ?: 'redirect')));
+$page = (string) ($_GET['page'] ?? 'dashboard');
+if ($redirectMode === 'redirect') {
+    $targets = [
+        'dashboard' => '/dashboard/financial',
+        'account-structure' => '/gl/accounts',
+        'account-mapping' => '/gl/accounts',
+        'flow-audit' => '/settings/integrations',
+        'integration' => '/settings/integrations',
+        'calculator' => '/operations/deal-calculator',
+        'case-pnl' => '/reports/project-pl',
+        'profit-loss' => '/reports/project-pl',
+        'project-tracker' => '/dashboard/projects',
+        'usage-guide' => '/operations',
+        'case-studies' => '/operations',
+    ];
+    $target = ERP_BASE_URL . ($targets[$page] ?? '/dashboard/financial');
+    header('Cache-Control: no-store');
+    header('Location: ' . $target, true, 302);
+    exit;
+}
+
 $pages = [
     'dashboard'        => ['title' => 'ภาพรวม',          'file' => 'dashboard.php'],
     'account-structure'=> ['title' => 'โครงสร้างบัญชี',   'file' => 'account-structure.php'],
@@ -21,7 +43,6 @@ $pages = [
     'integration'      => ['title' => 'การเชื่อมระบบ',      'file' => 'integration.php'],
 ];
 
-$page = (string) ($_GET['page'] ?? 'dashboard');
 if (!isset($pages[$page])) {
     $page = 'dashboard';
 }
