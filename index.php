@@ -13,8 +13,8 @@ if ($redirectMode === 'redirect') {
     $targets = [
         'dashboard' => '/dashboard/financial',
         'account-structure' => '/gl/accounts',
-        'account-mapping' => '/gl/accounts',
-        'flow-audit' => '/settings/integrations',
+        'account-mapping' => '/settings/account-mapping',
+        'flow-audit' => '/audit/finance-flow',
         'integration' => '/settings/integrations',
         'calculator' => '/operations/deal-calculator',
         'case-pnl' => '/reports/project-pl',

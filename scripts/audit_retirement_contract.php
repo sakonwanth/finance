@@ -11,6 +11,8 @@ $checks = [
     'calculator moved' => str_contains($index, "'calculator' => '/operations/deal-calculator'"),
     'P&L moved' => str_contains($index, "'profit-loss' => '/reports/project-pl'"),
     'integration moved' => str_contains($index, "'integration' => '/settings/integrations'"),
+    'account mapping moved' => str_contains($index, "'account-mapping' => '/settings/account-mapping'"),
+    'flow audit moved' => str_contains($index, "'flow-audit' => '/audit/finance-flow'"),
     'no-store redirect' => str_contains($index, "header('Cache-Control: no-store')"),
 ];
 $failed = 0;

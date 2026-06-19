@@ -21,6 +21,10 @@ jobs:
           echo "Checking PHP syntax..."
           find . -name "*.php" -not -path "./vendor/*" -print0 | xargs -0 -n1 php -l
           echo "All PHP files valid"
+      - name: Audit retirement contract
+        run: php scripts/audit_retirement_contract.php
+      - name: E2E canonical redirects
+        run: php scripts/qa_e2e_retirement_redirects.php
 
   deploy:
     name: Deploy (SSH git-pull)
@@ -60,4 +64,6 @@ jobs:
             if [ -n "$COMPOSER" ] && [ -f composer.json ]; then
               $COMPOSER install --no-interaction --no-dev --optimize-autoloader 2>&1 || echo "composer skipped"
             fi
+            $PHP_BIN scripts/audit_retirement_contract.php
+            $PHP_BIN scripts/qa_e2e_retirement_redirects.php
             echo "tp-finance deployed: $(git log -1 --format='%h %s')"
