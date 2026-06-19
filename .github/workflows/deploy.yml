@@ -1,4 +1,4 @@
-name: Deploy tp-finance
+name: Deploy retired tp-finance shell
 
 on:
   push:
@@ -7,42 +7,39 @@ on:
 
 jobs:
   validate:
-    name: Validate PHP
+    name: QA, Audit, E2E
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.1'
-          extensions: pdo, pdo_mysql, mbstring, json
-      - name: PHP syntax check
-        run: |
-          echo "Checking PHP syntax..."
-          find . -name "*.php" -not -path "./vendor/*" -print0 | xargs -0 -n1 php -l
-          echo "All PHP files valid"
+          php-version: '8.2'
+      - name: QA syntax
+        run: find . -name "*.php" -print0 | xargs -0 -n1 php -l
       - name: Audit retirement contract
         run: php scripts/audit_retirement_contract.php
       - name: E2E canonical redirects
         run: php scripts/qa_e2e_retirement_redirects.php
 
   deploy:
-    name: Deploy (SSH git-pull)
+    name: Auto Deploy and Verify
     needs: [validate]
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
-      # Secrets can't be used in `if:`, so probe here and skip (not fail) when unset.
       - name: Check deploy config
         id: cfg
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
         run: |
-          if [ -n "$SSH_HOST" ]; then echo "ready=yes" >> "$GITHUB_OUTPUT"
-          else echo "ready=no" >> "$GITHUB_OUTPUT"
-            echo "::notice::SSH_HOST not set — skipping deploy (set SSH_HOST/SSH_USER/SSH_KEY/SSH_PATH to enable)"
+          if [ -n "$SSH_HOST" ]; then
+            echo "ready=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+            echo "::error::SSH deploy configuration is required for the retired finance shell"
+            exit 1
           fi
-      - name: Deploy on server
+      - name: Deploy and production verify
         if: steps.cfg.outputs.ready == 'yes'
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -53,17 +50,12 @@ jobs:
           script: |
             set -e
             cd "${{ secrets.SSH_PATH }}" || { echo "SSH_PATH missing"; exit 1; }
-            # Robust deploy: make the working tree match origin/main exactly. Clears
-            # untracked cruft (e.g. a stray composer.lock) that would block a plain pull.
-            # .env and vendor/ are gitignored, so they survive clean/reset.
             git fetch origin main
             git clean -fd
             git reset --hard origin/main
             PHP_BIN=$(which php 2>/dev/null || echo php)
-            COMPOSER=$(which composer 2>/dev/null || echo "")
-            if [ -n "$COMPOSER" ] && [ -f composer.json ]; then
-              $COMPOSER install --no-interaction --no-dev --optimize-autoloader 2>&1 || echo "composer skipped"
-            fi
             $PHP_BIN scripts/audit_retirement_contract.php
             $PHP_BIN scripts/qa_e2e_retirement_redirects.php
-            echo "tp-finance deployed: $(git log -1 --format='%h %s')"
+            LOCATION=$(curl -sS -o /dev/null -D - --max-time 15 'https://finance.tp-asset.com/?page=calculator' | tr -d '\r' | awk 'BEGIN{IGNORECASE=1} /^location:/{print $2}')
+            test "$LOCATION" = "https://erp.tp-asset.com/operations/deal-calculator"
+            echo "tp-finance retirement shell verified: $(git log -1 --format='%h %s')"
