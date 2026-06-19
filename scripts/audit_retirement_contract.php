@@ -13,6 +13,8 @@ $checks = [
     'integration moved' => str_contains($index, "'integration' => '/settings/integrations'"),
     'account mapping moved' => str_contains($index, "'account-mapping' => '/settings/account-mapping'"),
     'flow audit moved' => str_contains($index, "'flow-audit' => '/audit/finance-flow'"),
+    'usage guide moved' => str_contains($index, "'usage-guide' => '/help/finance'"),
+    'case studies moved' => str_contains($index, "'case-studies' => '/reports/customer-case-pl'"),
     'no-store redirect' => str_contains($index, "header('Cache-Control: no-store')"),
 ];
 $failed = 0;

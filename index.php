@@ -20,8 +20,8 @@ if ($redirectMode === 'redirect') {
         'case-pnl' => '/reports/project-pl',
         'profit-loss' => '/reports/project-pl',
         'project-tracker' => '/dashboard/projects',
-        'usage-guide' => '/operations',
-        'case-studies' => '/operations',
+        'usage-guide' => '/help/finance',
+        'case-studies' => '/reports/customer-case-pl',
     ];
     $target = ERP_BASE_URL . ($targets[$page] ?? '/dashboard/financial');
     header('Cache-Control: no-store');
